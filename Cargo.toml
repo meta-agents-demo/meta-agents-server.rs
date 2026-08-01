@@ -1,0 +1,28 @@
+[package]
+name = "meta-agents-server"
+version = "0.1.0"
+edition = "2021"
+description = "Rust server + web UI for AI agent introspection, metacognition, and meta-task tracking"
+license = "MIT"
+repository = "https://github.com/meta-agents-demo/meta-agents-server.rs"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.7", features = ["ws"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = "0.3"
+leptos = { version = "0.6", features = ["ssr"] }
+lru = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio-tungstenite = "0.23"
+
+[[example]]
+name = "rust_connector"
+path = "examples/rust_connector.rs"

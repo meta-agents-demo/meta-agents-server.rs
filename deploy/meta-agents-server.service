@@ -1,0 +1,37 @@
+# Sample systemd unit for meta-agents-server.
+#
+# Install:
+#   sudo cp target/release/meta-agents-server /usr/local/bin/
+#   sudo cp deploy/meta-agents-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now meta-agents-server
+#
+# Logs: journalctl -u meta-agents-server -f
+
+[Unit]
+Description=meta-agents introspection/metacognition server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/meta-agents-server
+Restart=on-failure
+RestartSec=2
+
+# Bind addresses — set to 0.0.0.0 for remote agents, keep 127.0.0.1 for local-only.
+Environment=META_AGENTS_HTTP_ADDR=0.0.0.0:7700
+Environment=META_AGENTS_TCP_ADDR=0.0.0.0:7701
+Environment=META_AGENTS_UDP_ADDR=0.0.0.0:7702
+Environment=RUST_LOG=meta_agents_server=info
+
+# Hardening (storage is in-memory; the process needs nothing but sockets).
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
