@@ -16,16 +16,26 @@ enum BoundedLine {
 }
 
 /// Read one newline-delimited frame without ever allocating beyond `max`
-/// bytes. An oversized frame closes that connection after an explicit error
+/// payload bytes. `\n` and the optional `\r` in a CRLF terminator are framing,
+/// not payload, including when the two bytes arrive in different read buffers.
+/// An oversized frame closes that connection after an explicit error
 /// acknowledgement; reconnecting starts from a clean framing boundary.
 async fn read_bounded_line<R>(reader: &mut R, max: usize) -> io::Result<BoundedLine>
 where
     R: AsyncBufRead + Unpin,
 {
     let mut frame = Vec::with_capacity(max.min(8 * 1024));
+    let mut pending_carriage_return = false;
+
     loop {
         let available = reader.fill_buf().await?;
         if available.is_empty() {
+            if pending_carriage_return {
+                if frame.len() >= max {
+                    return Ok(BoundedLine::TooLarge);
+                }
+                frame.push(b'\r');
+            }
             if frame.is_empty() {
                 return Ok(BoundedLine::Eof);
             }
@@ -33,21 +43,48 @@ where
         }
 
         let newline = available.iter().position(|byte| *byte == b'\n');
-        let bytes_to_copy = newline.unwrap_or(available.len());
-        if frame.len().saturating_add(bytes_to_copy) > max {
+
+        // A deferred CR followed immediately by LF is a split CRLF delimiter.
+        // Otherwise it was ordinary payload and must be counted before copying
+        // the current buffer.
+        if pending_carriage_return {
+            if newline == Some(0) {
+                reader.consume(1);
+                break;
+            }
+            if frame.len() >= max {
+                return Ok(BoundedLine::TooLarge);
+            }
+            frame.push(b'\r');
+            pending_carriage_return = false;
+        }
+
+        let segment_end = newline.unwrap_or(available.len());
+        let segment = &available[..segment_end];
+        let trailing_carriage_return = segment.last() == Some(&b'\r');
+        let payload = if trailing_carriage_return {
+            &segment[..segment.len() - 1]
+        } else {
+            segment
+        };
+
+        if frame.len().saturating_add(payload.len()) > max {
             return Ok(BoundedLine::TooLarge);
         }
-        frame.extend_from_slice(&available[..bytes_to_copy]);
-        let consumed = bytes_to_copy + if newline.is_some() { 1 } else { 0 };
-        reader.consume(consumed);
-        if newline.is_some() {
-            break;
+        frame.extend_from_slice(payload);
+
+        match newline {
+            Some(position) => {
+                reader.consume(position + 1);
+                break;
+            }
+            None => {
+                pending_carriage_return = trailing_carriage_return;
+                reader.consume(segment_end);
+            }
         }
     }
 
-    if frame.last() == Some(&b'\r') {
-        frame.pop();
-    }
     match String::from_utf8(frame) {
         Ok(line) => Ok(BoundedLine::Line(line)),
         Err(_) => Ok(BoundedLine::InvalidUtf8),
@@ -140,6 +177,30 @@ mod tests {
         assert_eq!(
             read_bounded_line(&mut reader, 4).await.unwrap(),
             BoundedLine::Eof
+        );
+    }
+
+    #[tokio::test]
+    async fn bounded_reader_accepts_crlf_split_across_read_buffers() {
+        let input = b"1234\r\nnext\n";
+        let mut reader = BufReader::with_capacity(5, &input[..]);
+        assert_eq!(
+            read_bounded_line(&mut reader, 4).await.unwrap(),
+            BoundedLine::Line("1234".to_string())
+        );
+        assert_eq!(
+            read_bounded_line(&mut reader, 4).await.unwrap(),
+            BoundedLine::Line("next".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn lone_carriage_return_counts_as_payload_at_eof() {
+        let input = b"1234\r";
+        let mut reader = BufReader::new(&input[..]);
+        assert_eq!(
+            read_bounded_line(&mut reader, 4).await.unwrap(),
+            BoundedLine::TooLarge
         );
     }
 
