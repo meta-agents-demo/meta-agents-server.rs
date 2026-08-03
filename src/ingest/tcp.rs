@@ -56,7 +56,6 @@ where
                 return Ok(BoundedLine::TooLarge);
             }
             frame.push(b'\r');
-            pending_carriage_return = false;
         }
 
         let segment_end = newline.unwrap_or(available.len());
