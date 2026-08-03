@@ -53,7 +53,10 @@ async fn invalid_http_batch_is_atomic_and_next_sequence_starts_at_one() {
         .json()
         .await
         .expect("agents JSON");
-    assert!(agents.is_empty(), "invalid batch partially created an agent");
+    assert!(
+        agents.is_empty(),
+        "invalid batch partially created an agent"
+    );
 
     let recent: Vec<Value> = client
         .get(format!("{base}/api/events/recent"))
