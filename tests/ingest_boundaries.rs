@@ -194,7 +194,6 @@ async fn read_side_limit_is_capped_at_one_thousand_events() {
         .expect("recent events JSON");
     assert_eq!(events.len(), 1_000);
     assert!(events.windows(2).all(|window| {
-        window[0]["seq"].as_u64().expect("left seq")
-            < window[1]["seq"].as_u64().expect("right seq")
+        window[0]["seq"].as_u64().expect("left seq") < window[1]["seq"].as_u64().expect("right seq")
     }));
 }
