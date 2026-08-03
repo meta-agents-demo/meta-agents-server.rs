@@ -58,8 +58,7 @@ async fn write_ack<W>(writer: &mut W, ack: Ack) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
-    let mut payload =
-        serde_json::to_string(&ack).unwrap_or_else(|_| "{\"ok\":false}".to_string());
+    let mut payload = serde_json::to_string(&ack).unwrap_or_else(|_| "{\"ok\":false}".to_string());
     payload.push('\n');
     writer.write_all(payload.as_bytes()).await
 }
