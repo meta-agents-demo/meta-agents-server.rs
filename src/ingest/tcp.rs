@@ -38,7 +38,7 @@ where
             return Ok(BoundedLine::TooLarge);
         }
         frame.extend_from_slice(&available[..bytes_to_copy]);
-        let consumed = bytes_to_copy + usize::from(newline.is_some());
+        let consumed = bytes_to_copy + if newline.is_some() { 1 } else { 0 };
         reader.consume(consumed);
         if newline.is_some() {
             break;
