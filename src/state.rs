@@ -136,7 +136,10 @@ mod tests {
         assert!(error.contains("percent 101"));
         assert!(state.storage.agents().is_empty());
         assert!(state.storage.recent_events(100).is_empty());
-        assert!(feed.try_recv().is_err(), "invalid batch reached the live feed");
+        assert!(
+            feed.try_recv().is_err(),
+            "invalid batch reached the live feed"
+        );
 
         let stored = state
             .ingest_json(
@@ -145,7 +148,10 @@ mod tests {
             )
             .expect("valid event after rejected batch");
         assert_eq!(stored.len(), 1);
-        assert_eq!(stored[0].seq, 1, "rejected batch consumed a sequence number");
+        assert_eq!(
+            stored[0].seq, 1,
+            "rejected batch consumed a sequence number"
+        );
     }
 
     #[test]
