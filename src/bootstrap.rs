@@ -141,8 +141,7 @@ mod tests {
     #[test]
     fn malformed_transport_addresses_fail_before_any_listener_starts() {
         assert!(
-            Args::try_parse_from(["meta-agents-server", "--http-addr", "not-a-socket"])
-                .is_err()
+            Args::try_parse_from(["meta-agents-server", "--http-addr", "not-a-socket"]).is_err()
         );
     }
 
