@@ -10,7 +10,10 @@ use clap::Parser;
 use meta_agents_server::storage::StorageConfig;
 use meta_agents_server::{start, ServerConfig};
 
-/// Foreground process configuration for the multi-transport server.
+/// meta-agents-server: ingest AI-agent introspection, metacognition, task
+/// progress and lessons over HTTP / WebSocket / TCP / UDP, and serve a web UI
+/// to visualize it. Run in the foreground; for daemon use see the sample
+/// systemd unit and launchd plist in deploy/.
 #[derive(Parser, Debug)]
 #[command(name = "meta-agents-server", version, about)]
 struct Args {
@@ -143,6 +146,15 @@ mod tests {
         assert!(
             Args::try_parse_from(["meta-agents-server", "--http-addr", "not-a-socket"]).is_err()
         );
+    }
+
+    #[test]
+    fn help_preserves_the_product_description() {
+        let help = Args::try_parse_from(["meta-agents-server", "--help"])
+            .expect_err("help exits before startup")
+            .to_string();
+        assert!(help.contains("ingest AI-agent introspection"));
+        assert!(help.contains("daemon use"));
     }
 
     #[test]
