@@ -15,7 +15,11 @@ use meta_agents_server::{start, ServerConfig};
 /// to visualize it. Run in the foreground; for daemon use see the sample
 /// systemd unit and launchd plist in deploy/.
 #[derive(Parser, Debug)]
-#[command(name = "meta-agents-server", version, about)]
+#[command(
+    name = "meta-agents-server",
+    version,
+    about = "meta-agents-server: ingest AI-agent introspection, metacognition, task progress and lessons over HTTP / WebSocket / TCP / UDP, and serve a web UI to visualize it. Run in the foreground; for daemon use see the sample systemd unit and launchd plist in deploy/."
+)]
 struct Args {
     /// Bind address for the web UI, REST API and WebSockets.
     #[arg(long, env = "META_AGENTS_HTTP_ADDR", default_value = "127.0.0.1:7700")]
