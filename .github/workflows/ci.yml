@@ -53,3 +53,28 @@ jobs:
 
       - name: Test all unit and real-transport contracts
         run: cargo test --locked --all-targets --all-features
+
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --no-deps --all-features
+
+      - name: Release build
+        run: cargo build --locked --release --all-features
+
+      - name: Enforce process-bootstrap boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/bootstrap.rs
+          test -f BOOTSTRAP.md
+          test "$(wc -l < src/main.rs)" -le 6
+          git grep -qF 'pub async fn run' -- src/bootstrap.rs
+          git grep -qF 'Args::parse' -- src/bootstrap.rs
+          git grep -qF 'into_server_config' -- src/bootstrap.rs
+          git grep -qF 'The executable bootstrap must not parse events' -- BOOTSTRAP.md
+          if git grep -nE 'clap::Parser|StorageConfig|ServerConfig|tracing_subscriber|handle\.wait' -- src/main.rs; then
+            echo 'CLI parsing, telemetry, configuration, and lifecycle waiting must remain outside src/main.rs' >&2
+            exit 1
+          fi
+          git diff --check
