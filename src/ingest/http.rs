@@ -1,14 +1,17 @@
 //! HTTP REST API: registration, event ingestion and read-side queries.
 
 use crate::model::{now_ms, Ack, AgentRegistration, Event, Transport};
-use crate::state::{AppState, LIVENESS_WINDOW_MS};
-use axum::extract::{Path, Query, State};
+use crate::state::{AppState, LIVENESS_WINDOW_MS, MAX_INGEST_PAYLOAD_BYTES};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+const DEFAULT_QUERY_LIMIT: usize = 100;
+const MAX_QUERY_LIMIT: usize = 1_000;
 
 pub fn api_router() -> Router<AppState> {
     Router::new()
@@ -20,6 +23,7 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/events/recent", get(recent_events))
         .route("/api/tasks", get(list_tasks))
         .route("/api/lessons", get(list_lessons))
+        .layer(DefaultBodyLimit::max(MAX_INGEST_PAYLOAD_BYTES))
 }
 
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -79,7 +83,7 @@ async fn register_agent(
 async fn post_events(State(state): State<AppState>, body: String) -> Response {
     match state.ingest_json(Transport::Http, &body) {
         Ok(stored) => {
-            let acks: Vec<Ack> = stored.iter().map(|s| Ack::ok(s.seq)).collect();
+            let acks: Vec<Ack> = stored.iter().map(|event| Ack::ok(event.seq)).collect();
             (StatusCode::ACCEPTED, Json(acks)).into_response()
         }
         Err(e) => (StatusCode::BAD_REQUEST, Json(Ack::err(e))).into_response(),
@@ -93,22 +97,26 @@ struct LimitQuery {
 }
 
 fn default_limit() -> usize {
-    100
+    DEFAULT_QUERY_LIMIT
+}
+
+fn bounded_limit(limit: usize) -> usize {
+    limit.min(MAX_QUERY_LIMIT)
 }
 
 async fn agent_events(
     State(state): State<AppState>,
     Path(name): Path<String>,
-    Query(q): Query<LimitQuery>,
+    Query(query): Query<LimitQuery>,
 ) -> Json<Vec<crate::model::StoredEvent>> {
-    Json(state.storage.events_for(&name, q.limit))
+    Json(state.storage.events_for(&name, bounded_limit(query.limit)))
 }
 
 async fn recent_events(
     State(state): State<AppState>,
-    Query(q): Query<LimitQuery>,
+    Query(query): Query<LimitQuery>,
 ) -> Json<Vec<crate::model::StoredEvent>> {
-    Json(state.storage.recent_events(q.limit))
+    Json(state.storage.recent_events(bounded_limit(query.limit)))
 }
 
 async fn list_tasks(State(state): State<AppState>) -> Json<Vec<crate::model::TaskSnapshot>> {
@@ -122,7 +130,22 @@ struct LessonsQuery {
 
 async fn list_lessons(
     State(state): State<AppState>,
-    Query(q): Query<LessonsQuery>,
+    Query(query): Query<LessonsQuery>,
 ) -> Json<Vec<crate::model::Lesson>> {
-    Json(state.storage.lessons(q.topic.as_deref()))
+    Json(state.storage.lessons(query.topic.as_deref()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_limit_is_bounded_without_changing_small_requests() {
+        assert_eq!(bounded_limit(0), 0);
+        assert_eq!(bounded_limit(1), 1);
+        assert_eq!(bounded_limit(DEFAULT_QUERY_LIMIT), DEFAULT_QUERY_LIMIT);
+        assert_eq!(bounded_limit(MAX_QUERY_LIMIT), MAX_QUERY_LIMIT);
+        assert_eq!(bounded_limit(MAX_QUERY_LIMIT + 1), MAX_QUERY_LIMIT);
+        assert_eq!(bounded_limit(usize::MAX), MAX_QUERY_LIMIT);
+    }
 }

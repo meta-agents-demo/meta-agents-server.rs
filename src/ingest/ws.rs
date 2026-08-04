@@ -7,7 +7,7 @@
 //!   pushed as one JSON text frame.
 
 use crate::model::{Ack, Transport};
-use crate::state::AppState;
+use crate::state::{AppState, MAX_INGEST_PAYLOAD_BYTES};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::Response;
@@ -22,20 +22,22 @@ pub fn ws_router() -> Router<AppState> {
 }
 
 async fn ingest_upgrade(State(state): State<AppState>, ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(move |socket| ingest_session(state, socket))
+    ws.max_message_size(MAX_INGEST_PAYLOAD_BYTES)
+        .max_frame_size(MAX_INGEST_PAYLOAD_BYTES)
+        .on_upgrade(move |socket| ingest_session(state, socket))
 }
 
 async fn ingest_session(state: AppState, mut socket: WebSocket) {
     while let Some(message) = socket.recv().await {
         let message = match message {
-            Ok(m) => m,
+            Ok(message) => message,
             Err(_) => break,
         };
         match message {
             Message::Text(text) => {
                 let ack = match state.ingest_json(Transport::Websocket, &text) {
-                    Ok(stored) => Ack::ok(stored.last().map(|s| s.seq).unwrap_or(0)),
-                    Err(e) => Ack::err(e),
+                    Ok(stored) => Ack::ok(stored.last().map(|event| event.seq).unwrap_or(0)),
+                    Err(error) => Ack::err(error),
                 };
                 let payload =
                     serde_json::to_string(&ack).unwrap_or_else(|_| "{\"ok\":false}".to_string());
@@ -55,15 +57,17 @@ async fn ingest_session(state: AppState, mut socket: WebSocket) {
 }
 
 async fn feed_upgrade(State(state): State<AppState>, ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(move |socket| feed_session(state, socket))
+    ws.max_message_size(MAX_INGEST_PAYLOAD_BYTES)
+        .max_frame_size(MAX_INGEST_PAYLOAD_BYTES)
+        .on_upgrade(move |socket| feed_session(state, socket))
 }
 
 async fn feed_session(state: AppState, socket: WebSocket) {
-    let mut rx = state.feed.subscribe();
+    let mut receiver = state.feed.subscribe();
     let (mut sink, mut stream) = socket.split();
     loop {
         tokio::select! {
-            broadcast = rx.recv() => {
+            broadcast = receiver.recv() => {
                 match broadcast {
                     Ok(json) => {
                         if sink.send(Message::Text(json)).await.is_err() {

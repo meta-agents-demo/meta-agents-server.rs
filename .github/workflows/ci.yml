@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 7 1 * *"
 
 permissions:
   contents: read
@@ -12,21 +15,41 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  RUST_BACKTRACE: "1"
+
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
+
+      - name: Validate workflow syntax and expressions
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        with:
+          args: .github/workflows/ci.yml
+
+      - name: Install the exact Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+
+      - name: Cache locked Rust dependencies
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
       - name: Format
         run: cargo fmt --all -- --check
+
       - name: Check all targets
-        run: cargo check --all-targets --all-features
+        run: cargo check --locked --all-targets --all-features
+
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Test
-        run: cargo test --all-targets --all-features
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Test all unit and real-transport contracts
+        run: cargo test --locked --all-targets --all-features
