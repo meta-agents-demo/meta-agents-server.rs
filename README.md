@@ -1,5 +1,21 @@
 # meta-agents-server.rs
 
+> [!CAUTION]
+> **Legacy/reference implementation — do not deploy this repository in
+> production.** It is preserved for historical context, protocol comparison,
+> and local development. This server has no authentication or authorization,
+> stores all state only in memory, loses that state on restart, and does not
+> prevent unsafe non-loopback bindings. Its deployment files and support for
+> `0.0.0.0` are legacy compatibility surfaces, not production guidance.
+>
+> The canonical production candidate is
+> [`meta-agents-demo/meta-agent-control-plane.rs`](https://github.com/meta-agents-demo/meta-agent-control-plane.rs).
+> Follow its container and production-readiness work in
+> [PR #40](https://github.com/meta-agents-demo/meta-agent-control-plane.rs/pull/40),
+> with project context in
+> [Linear DEN-1057](https://linear.app/issue/DEN-1057) and
+> [DEN-3496](https://linear.app/issue/DEN-3496).
+
 One Rust binary for AI-agent **introspection, metacognition and meta-task
 tracking**: agent processes (ChatGPT, Claude, Gemini, anything else) connect
 over HTTP, WebSocket, raw TCP or UDP and report what they are thinking, how
@@ -127,23 +143,26 @@ are CLI/env tunable (`--max-agents`, `--events-per-agent`, `--recent-events`,
 ```sh
 cargo run --release                      # localhost defaults: 7700/7701/7702
 open http://127.0.0.1:7700
-
-# remote daemon: bind publicly via flags or env (flags win)
-cargo run --release -- --http-addr 0.0.0.0:7700 --tcp-addr 0.0.0.0:7701 --udp-addr 0.0.0.0:7702
-META_AGENTS_HTTP_ADDR=0.0.0.0:7700 cargo run --release
 ```
 
-The server runs in the foreground (log to stdout, `RUST_LOG=debug` for more);
-daemonize with your init system rather than a fork-based `--daemon` flag:
+Keep all three listeners on their default loopback addresses. Although the CLI
+accepts non-loopback addresses, binding this unauthenticated server to
+`0.0.0.0` (or another remotely reachable interface) can expose agent events,
+tasks, lessons, and the operator UI to any network peer. A reverse proxy does
+not make the raw TCP and UDP listeners safe, and this server does not provide
+TLS, durable storage, access control, or production hardening. Use the
+[canonical production candidate](https://github.com/meta-agents-demo/meta-agent-control-plane.rs)
+for containerized or remote deployment work.
+
+The server runs in the foreground (log to stdout, `RUST_LOG=debug` for more).
+The following init-system files are preserved as historical packaging examples
+for loopback-only local evaluation; they are not supported production units:
 
 - **systemd (Linux):** [`deploy/meta-agents-server.service`](deploy/meta-agents-server.service)
-  — `sudo cp` it to `/etc/systemd/system/`, `systemctl enable --now meta-agents-server`.
 - **launchd (macOS):** [`deploy/com.meta-agents.server.plist`](deploy/com.meta-agents.server.plist)
-  — `cp` to `~/Library/LaunchAgents/`, `launchctl load` it.
-- Quick-and-dirty: `nohup target/release/meta-agents-server &`.
 
-There is no auth: front it with a reverse proxy / firewall for anything
-non-local.
+Do not expose this server to a shared or untrusted network, even behind only a
+reverse proxy or firewall.
 
 ## Connector guide
 
